@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autoencoder Detector</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --line-color: rgba(255, 255, 255, 0.9);
+            --accent-color: #00ff88;
+            --neuron-color: #4a9eff;
+            --neuron-active: #ff4a4a;
+            --gradient-start: #1a1a1a;
+            --gradient-end: #000000;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            color: var(--line-color);
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 800px;
+            min-height: 100vh;
+        }
+
+        #autoencoder-viz {
+            width: 100%;
+            height: 800px;
+            overflow: visible;
+            filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.1));
+        }
+
+        .layer {
+            fill: rgba(255, 255, 255, 0.05);
+            stroke: var(--line-color);
+            stroke-width: 2;
+            transition: all 0.5s ease;
+            rx: 10;
+            ry: 10;
+        }
+
+        .layer:hover {
+            stroke: var(--accent-color);
+            filter: drop-shadow(0 0 10px var(--accent-color));
+            fill: rgba(0, 255, 136, 0.1);
+        }
+
+        .layer.active {
+            stroke: var(--neuron-active);
+            filter: drop-shadow(0 0 15px var(--neuron-active));
+            fill: rgba(255, 74, 74, 0.1);
+        }
+
+        .connection {
+            stroke: var(--line-color);
+            stroke-width: 1.5;
+            opacity: 0.2;
+            marker-end: url(#arrowhead);
+            transition: all 0.3s ease;
+        }
+
+        .connection.active {
+            stroke: var(--accent-color);
+            opacity: 0.8;
+            stroke-width: 2;
+            filter: drop-shadow(0 0 5px var(--accent-color));
+            animation: pulse-connection 2s infinite;
+        }
+
+        @keyframes pulse-connection {
+            0%, 100% { opacity: 0.4; stroke-width: 1.5; }
+            50% { opacity: 0.8; stroke-width: 2.5; }
+        }
+
+        .layer-label {
+            fill: var(--line-color);
+            font-size: 14px;
+            text-anchor: middle;
+            transition: all 0.3s ease;
+        }
+
+        .dimension-label {
+            fill: var(--accent-color);
+            font-size: 12px;
+            text-anchor: middle;
+            opacity: 0.8;
+            transition: all 0.3s ease;
+        }
+
+        .latent-space {
+            fill: rgba(0, 255, 136, 0.1);
+            stroke: var(--accent-color);
+            stroke-width: 2;
+            filter: drop-shadow(0 0 15px var(--accent-color));
+        }
+
+        .equation {
+            fill: var(--accent-color);
+            font-size: 18px;
+            font-weight: bold;
+            filter: drop-shadow(0 0 5px var(--accent-color));
+            opacity: 0.9;
+        }
+
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            max-width: 300px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
+            border-radius: 15px;
+            display: flex;
+            gap: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        button {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--accent-color);
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: var(--accent-color);
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 2px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            background: rgba(0, 255, 136, 0.2);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        .image-container {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid var(--line-color);
+            transition: all 0.3s ease;
+        }
+
+        .image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .input-image {
+            left: 110px;
+            top: 310px;
+        }
+
+        .output-image {
+            right: 110px;
+            top: 310px;
+        }
+
+        .image-container:hover {
+            transform: scale(1.1);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <svg id="autoencoder-viz" viewBox="0 0 1200 800">
+        <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="white"/>
+            </marker>
+            <filter id="glow">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+
+        <!-- Ecuaciones -->
+        <text class="equation" x="300" y="50">z = encoder(x)</text>
+        <text class="equation" x="900" y="50">x̂ = decoder(z)</text>
+        <text class="equation" x="600" y="750">L = ||x - x̂||²</text>
+
+        <!-- Encoder -->
+        <g id="encoder">
+            <rect class="layer" x="100" y="300" width="100" height="100"/>
+            <text class="layer-label" x="150" y="280">Input</text>
+            <text class="dimension-label" x="150" y="420">512×512×3</text>
+
+            <rect class="layer" x="250" y="320" width="80" height="80"/>
+            <text class="layer-label" x="290" y="300">Conv2d(32)</text>
+            <text class="dimension-label" x="290" y="420">256×256</text>
+
+            <rect class="layer" x="380" y="340" width="60" height="60"/>
+            <text class="layer-label" x="410" y="320">Conv2d(64)</text>
+            <text class="dimension-label" x="410" y="420">128×128</text>
+
+            <rect class="layer" x="490" y="350" width="40" height="40"/>
+            <text class="layer-label" x="510" y="330">Conv2d(128)</text>
+            <text class="dimension-label" x="510" y="420">64×64</text>
+        </g>
+
+        <!-- Latent Space -->
+        <g id="latent-space">
+            <circle class="latent-space" cx="600" cy="370" r="20"/>
+            <text class="layer-label" x="600" y="330">Latent Space</text>
+            <text class="dimension-label" x="600" y="420">16×16×512</text>
+        </g>
+
+        <!-- Decoder -->
+        <g id="decoder">
+            <rect class="layer" x="670" y="350" width="40" height="40"/>
+            <text class="layer-label" x="690" y="330">ConvT2d(256)</text>
+            <text class="dimension-label" x="690" y="420">32×32</text>
+
+            <rect class="layer" x="760" y="340" width="60" height="60"/>
+            <text class="layer-label" x="790" y="320">ConvT2d(128)</text>
+            <text class="dimension-label" x="790" y="420">64×64</text>
+
+            <rect class="layer" x="870" y="320" width="80" height="80"/>
+            <text class="layer-label" x="910" y="300">ConvT2d(64)</text>
+            <text class="dimension-label" x="910" y="420">128×128</text>
+
+            <rect class="layer" x="1000" y="300" width="100" height="100"/>
+            <text class="layer-label" x="1050" y="280">Output</text>
+            <text class="dimension-label" x="1050" y="420">512×512×3</text>
+        </g>
+
+        <!-- Conexiones -->
+        <path class="connection" d="M200,350 L250,360"/>
+        <path class="connection" d="M330,360 L380,370"/>
+        <path class="connection" d="M440,370 L490,370"/>
+        <path class="connection" d="M530,370 L580,370"/>
+        <path class="connection" d="M620,370 L670,370"/>
+        <path class="connection" d="M710,370 L760,370"/>
+        <path class="connection" d="M820,370 L870,360"/>
+        <path class="connection" d="M950,360 L1000,350"/>
+    </svg>
+
+    <!-- Imágenes de ejemplo -->
+    <div class="image-container input-image">
+        <img src="imagenes_512/RealArt/0002_AI-in-animal-classification.png" alt="Input Image">
+    </div>
+    <div class="image-container output-image">
+        <img src="imagenes_512/RealArt/0002_AI-in-animal-classification.png" alt="Output Image">
+    </div>
+
+    <div class="controls">
+        <button id="toggleAnimation">▶️ Animar</button>
+        <button id="toggleDetails">🔍 Detalles</button>
+    </div>
+
+    <div class="info-panel">
+        <h3 style="color: var(--accent-color); margin: 0 0 15px 0;">Autoencoder Detector</h3>
+        <p style="font-size: 12px; line-height: 1.6; margin: 0; opacity: 0.9;">
+            Detector de imágenes generadas por IA mediante autoencoder convolucional.
+            Reduce la dimensionalidad de 512×512×3 a 16×16×512 y reconstruye para detectar patrones artificiales.
+        </p>
+    </div>
+
+    <script>
+        const layers = document.querySelectorAll('.layer');
+        const connections = document.querySelectorAll('.connection');
+        let isAnimating = false;
+
+        document.getElementById('toggleAnimation').addEventListener('click', () => {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animateNetwork();
+            }
+        });
+
+        function animateNetwork() {
+            if (!isAnimating) return;
+
+            layers.forEach(l => l.classList.remove('active'));
+            connections.forEach(c => c.classList.remove('active'));
+
+            let delay = 0;
+            layers.forEach((layer, i) => {
+                setTimeout(() => {
+                    layer.classList.add('active');
+                    if (i < connections.length) {
+                        connections[i].classList.add('active');
+                    }
+                }, delay);
+                delay += 400;
+            });
+
+            setTimeout(() => {
+                if (isAnimating) animateNetwork();
+            }, delay + 1500);
+        }
+
+        document.getElementById('toggleDetails').addEventListener('click', () => {
+            const labels = document.querySelectorAll('.layer-label, .dimension-label');
+            labels.forEach(label => {
+                label.style.opacity = label.style.opacity === '0' ? '1' : '0';
+            });
+        });
+    </script>
+</body>
+</html> 
